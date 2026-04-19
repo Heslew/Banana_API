@@ -2,6 +2,7 @@ from flask import Flask, request, jsonify
 import numpy as np
 import pickle
 import joblib
+import sys
 
 app = Flask(__name__)
 
@@ -9,19 +10,41 @@ app = Flask(__name__)
 # Load your trained ML model
 # ═══════════════════════════════════════════════════════════════
 model = None
+scaler = None
+label_encoder = None
+
 try:
     # Try loading with joblib first (more robust for sklearn models)
     model = joblib.load('banana_model.pkl')
-    print("✓ ML model loaded successfully")
+    print("✓ ML model loaded successfully with joblib")
+    print(f"  Model type: {type(model)}")
     print(f"  Model classes: {model.classes_}")
-except FileNotFoundError:
-    print("⚠ Warning: banana_model.pkl not found in current directory")
+    
+    # Try loading scaler
+    try:
+        scaler = joblib.load('feature_scaler.pkl')
+        print("✓ Feature scaler loaded successfully")
+    except:
+        print("⚠ Feature scaler not found, will skip normalization")
+    
+    # Try loading label encoder
+    try:
+        label_encoder = joblib.load('label_encoder.pkl')
+        print("✓ Label encoder loaded successfully")
+        print(f"  Label encoder classes: {label_encoder.classes_}")
+    except:
+        print("⚠ Label encoder not found, using default mapping")
+        
+except FileNotFoundError as e:
+    print(f"⚠ ERROR: banana_model.pkl not found: {e}")
+    sys.exit(1)
 except Exception as e:
-    print(f"⚠ Warning: Error loading model: {e}")
+    print(f"⚠ ERROR loading model: {e}")
+    sys.exit(1)
 
 @app.route('/')
 def home():
-    return "Flask is running!"
+    return "Flask Banana Disease Prediction API is running!"
 
 @app.route('/predict', methods=['POST'])
 def predict():
@@ -34,28 +57,51 @@ def predict():
         moisture = data.get('moisture', 0)
         rainfall = data.get('rainfall', 0)
         
+        print(f"[DEBUG] Input: temp={temperature}, humidity={humidity}, moisture={moisture}, rainfall={rainfall}")
+        
         # Prepare input for ML model
         features = np.array([[temperature, humidity, moisture, rainfall]])
+        
+        # Normalize features if scaler available
+        if scaler is not None:
+            try:
+                features = scaler.transform(features)
+                print(f"[DEBUG] Features normalized")
+            except Exception as e:
+                print(f"[DEBUG] Scaler error: {e}, using raw features")
         
         # Make prediction using ML model
         if model is not None:
             try:
                 # Predict class
                 prediction_class = int(model.predict(features)[0])
+                print(f"[DEBUG] Prediction class: {prediction_class}")
                 
                 # Get probabilities and confidence
                 probabilities = model.predict_proba(features)[0]
                 confidence = float(np.max(probabilities))
                 
+                print(f"[DEBUG] Raw probabilities: {probabilities}")
+                print(f"[DEBUG] Max confidence (raw): {confidence}")
+                
+                # Convert confidence from 0-1 to 0-1 range (already correct)
+                # If confidence < 0.5, it's not confident - might need to adjust
+                if confidence < 0.33:
+                    # No class has >33% confidence, model is uncertain
+                    print(f"[DEBUG] Model uncertain (confidence={confidence:.2f})")
+                
                 # Map numeric class to disease name
-                # Classes: 0=healthy, 1=panama, 2=sigatoka
-                # (Adjust if needed based on your training labels)
-                disease_map = {
-                    0: "healthy",
-                    1: "panama",
-                    2: "sigatoka"
-                }
-                disease_name = disease_map.get(prediction_class, "healthy")
+                if label_encoder is not None:
+                    try:
+                        disease_name = label_encoder.inverse_transform([prediction_class])[0].lower()
+                    except:
+                        disease_map = {0: "healthy", 1: "panama", 2: "sigatoka"}
+                        disease_name = disease_map.get(prediction_class, "healthy")
+                else:
+                    disease_map = {0: "healthy", 1: "panama", 2: "sigatoka"}
+                    disease_name = disease_map.get(prediction_class, "healthy")
+                
+                print(f"[DEBUG] Predicted disease: {disease_name} with confidence {confidence:.2f}")
                 
                 # Determine risk level based on disease and environmental factors
                 if disease_name == "healthy":
@@ -79,28 +125,39 @@ def predict():
                 else:
                     risk_level = "Low Risk"
                 
+                print(f"[DEBUG] Risk level: {risk_level}")
+                
                 return jsonify({
                     "prediction": disease_name,
                     "risk_level": risk_level,
                     "confidence": confidence
                 })
             except Exception as e:
-                print(f"Model prediction error: {e}")
+                print(f"[ERROR] Model prediction error: {e}")
+                import traceback
+                traceback.print_exc()
                 # Fall back to threshold logic
                 return _fallback_prediction(temperature, humidity, moisture, rainfall)
         else:
             # Use fallback logic if model not loaded
+            print("[WARNING] Model is None, using fallback")
             return _fallback_prediction(temperature, humidity, moisture, rainfall)
             
     except Exception as e:
+        print(f"[ERROR] Request processing error: {e}")
+        import traceback
+        traceback.print_exc()
         return jsonify({
             "error": str(e),
             "prediction": "healthy",
-            "risk_level": "Low Risk"
+            "risk_level": "Low Risk",
+            "confidence": 0.5
         }), 400
 
 def _fallback_prediction(temperature, humidity, moisture, rainfall):
     """Fallback prediction logic based on environmental thresholds"""
+    
+    print("[INFO] Using fallback threshold-based prediction")
     
     # Determine primary risk based on environmental conditions
     panama_score = 0
@@ -143,10 +200,17 @@ def _fallback_prediction(temperature, humidity, moisture, rainfall):
         disease_name = "healthy"
         risk_level = "Healthy"
     
+    # Map score to confidence (0.5-0.9 range for fallback)
+    max_score = max(panama_score, sigatoka_score)
+    fallback_confidence = 0.5 + (max_score / 10.0)
+    fallback_confidence = min(fallback_confidence, 0.90)  # Cap at 0.90
+    
+    print(f"[INFO] Fallback: {disease_name} {risk_level} confidence={fallback_confidence:.2f}")
+    
     return jsonify({
         "prediction": disease_name,
         "risk_level": risk_level,
-        "confidence": 0.70
+        "confidence": fallback_confidence
     })
 
 if __name__ == '__main__':
