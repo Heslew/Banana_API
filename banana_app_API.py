@@ -57,6 +57,11 @@ def predict():
                 }
                 disease_name = disease_map.get(prediction_class, "healthy")
                 
+                # Debug: Log all probabilities
+                print(f"[DEBUG] Input: T={temperature}, H={humidity}, M={moisture}, R={rainfall}")
+                print(f"[DEBUG] Probabilities: Healthy={probabilities[0]:.4f} ({probabilities[0]*100:.1f}%), Panama={probabilities[1]:.4f} ({probabilities[1]*100:.1f}%), Sigatoka={probabilities[2]:.4f} ({probabilities[2]*100:.1f}%)")
+                print(f"[DEBUG] Predicted class: {prediction_class} ({disease_name}), Confidence: {confidence:.4f}")
+                
                 # Determine risk level based on disease and environmental factors
                 if disease_name == "healthy":
                     risk_level = "Healthy"
