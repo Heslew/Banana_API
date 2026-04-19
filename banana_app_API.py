@@ -10,9 +10,8 @@ app = Flask(__name__)
 # ═══════════════════════════════════════════════════════════════
 model = None
 try:
-    # Load the trained banana_model.pkl
-    with open('banana_model.pkl', 'rb') as f:
-        model = pickle.load(f)
+    # Try loading with joblib first (more robust for sklearn models)
+    model = joblib.load('banana_model.pkl')
     print("✓ ML model loaded successfully")
     print(f"  Model classes: {model.classes_}")
 except FileNotFoundError:
@@ -60,7 +59,7 @@ def predict():
                 
                 # Determine risk level based on disease and environmental factors
                 if disease_name == "healthy":
-                    risk_level = "Low Risk"
+                    risk_level = "Healthy"
                 elif disease_name == "panama":
                     # Panama prefers high moisture and warmth
                     if moisture > 70 and temperature > 25:
@@ -142,7 +141,7 @@ def _fallback_prediction(temperature, humidity, moisture, rainfall):
             risk_level = "Low Risk"
     else:
         disease_name = "healthy"
-        risk_level = "Low Risk"
+        risk_level = "Healthy"
     
     return jsonify({
         "prediction": disease_name,
