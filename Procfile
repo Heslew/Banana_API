@@ -1,1 +1,1 @@
-web: gunicorn banana_app_API:app
+web: gunicorn app:app
