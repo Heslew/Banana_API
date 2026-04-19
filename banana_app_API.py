@@ -7,39 +7,44 @@ import sys
 app = Flask(__name__)
 
 # ═══════════════════════════════════════════════════════════════
-# Load your trained ML model
+# Load your trained ML model pipeline
 # ═══════════════════════════════════════════════════════════════
+pipeline = None
 model = None
 scaler = None
 label_encoder = None
 
 try:
-    # Try loading with joblib first (more robust for sklearn models)
-    model = joblib.load('banana_model.pkl')
-    print("✓ ML model loaded successfully with joblib")
-    print(f"  Model type: {type(model)}")
-    print(f"  Model classes: {model.classes_}")
+    # Load the complete pipeline
+    pipeline = joblib.load('banana_model_pipeline.pkl')
+    print("✓ ML model pipeline loaded successfully")
+    print(f"  Pipeline type: {type(pipeline)}")
     
-    # Try loading scaler
-    try:
-        scaler = joblib.load('feature_scaler.pkl')
-        print("✓ Feature scaler loaded successfully")
-    except:
-        print("⚠ Feature scaler not found, will skip normalization")
+    # Extract components from pipeline
+    if hasattr(pipeline, 'named_steps'):
+        # sklearn Pipeline
+        if 'scaler' in pipeline.named_steps:
+            scaler = pipeline.named_steps['scaler']
+            print("✓ Feature scaler loaded from pipeline")
+        if 'model' in pipeline.named_steps:
+            model = pipeline.named_steps['model']
+            print(f"✓ Model loaded from pipeline: {type(model)}")
+            if hasattr(model, 'classes_'):
+                print(f"  Model classes: {model.classes_}")
+    else:
+        # Assume it's the model directly
+        model = pipeline
+        print("✓ Model loaded directly")
+        if hasattr(model, 'classes_'):
+            print(f"  Model classes: {model.classes_}")
     
-    # Try loading label encoder
-    try:
-        label_encoder = joblib.load('label_encoder.pkl')
-        print("✓ Label encoder loaded successfully")
-        print(f"  Label encoder classes: {label_encoder.classes_}")
-    except:
-        print("⚠ Label encoder not found, using default mapping")
-        
 except FileNotFoundError as e:
-    print(f"⚠ ERROR: banana_model.pkl not found: {e}")
+    print(f"⚠ ERROR: banana_model_pipeline.pkl not found: {e}")
     sys.exit(1)
 except Exception as e:
-    print(f"⚠ ERROR loading model: {e}")
+    print(f"⚠ ERROR loading pipeline: {e}")
+    import traceback
+    traceback.print_exc()
     sys.exit(1)
 
 @app.route('/')
