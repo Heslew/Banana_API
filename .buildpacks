@@ -1,0 +1,4 @@
+# Render configuration - force Python buildpack
+build:
+  buildpacks:
+    - https://github.com/heroku/heroku-buildpack-python.git
