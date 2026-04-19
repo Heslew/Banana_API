@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: banana-api
+    env: python
+    region: ohio
+    plan: free
+    pythonVersion: 3.11
+    buildCommand: pip install --upgrade pip setuptools && pip install -r requirements.txt
+    startCommand: gunicorn banana_app_API:app --bind 0.0.0.0:$PORT
+    maxInstances: 1
+    healthCheckPath: /
+    domains:
+      - banana-api.onrender.com
